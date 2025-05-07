@@ -16,4 +16,5 @@ pandas==2.2.3
 deepspeed==0.15.4
 python-dotenv
 wandb
+gdown
 # pip install flash-attn --no-build-isolation
