@@ -33,7 +33,7 @@ np.random.seed(seed)
 
 # ───────────────────────── credentials ─────────────────────────
 load_dotenv()
-HF_TOKEN = os.getenv("HF_API_KEY")
+HF_TOKEN = "REMOVED" #os.getenv("HF_API_KEY")
 if HF_TOKEN is None:
     raise RuntimeError("HF_API_KEY not found in environment (.env)")
 
@@ -41,7 +41,7 @@ HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft"
 
 # ────────────────────────── paths & constants ──────────────────────────
 MODEL_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
-DATA_DIR   = Path("/home/heshmo/workspace/teuken_hier/data/processed")
+DATA_DIR   = Path("/teuken_hier/data/processed")
 OUT_DIR    = Path("teuken-hier-sft")
 FULL_DIR   = OUT_DIR / "best"
 RUN_ID_FILE = OUT_DIR / "wandb_run_id.txt"
@@ -74,8 +74,8 @@ compute_metrics = build_ppl_compute_metrics()
 trainer_cfg = SFTConfig(
     seed=seed,
     output_dir=str(OUT_DIR),
-    per_device_train_batch_size=1,
-    gradient_accumulation_steps=4096,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=1024,
     num_train_epochs=4,
     learning_rate=2e-5,
     lr_scheduler_type="constant",
@@ -90,13 +90,13 @@ trainer_cfg = SFTConfig(
     eval_strategy="steps",
     eval_steps=2,
     save_strategy="steps",
-    save_total_limit=5,
+    save_total_limit=3,
     load_best_model_at_end=True,
     save_steps=2,
     per_device_eval_batch_size=1,
     dataset_text_field="prompt",
     bf16=True,
-    optim="adamw_bnb_8bit",
+    optim="adamw_torch_fused",
     eval_accumulation_steps=1,
     run_name="teuken-hier-sft",
     report_to=["wandb"],
@@ -112,12 +112,7 @@ trainer = SFTTrainer(
     processing_class=tokenizer,
     # compute_metrics=compute_metrics,  # Uncomment if you want PPL evaluation
     callbacks=[
-        GradNormWandBCallback(),
-        EarlyStopBadRun(
-            window_steps=750,
-            grad_norm_threshold=4.5,
-            loss_threshold=0.90,
-        ),
+        GradNormWandBCallback()
     ],
 )
 
