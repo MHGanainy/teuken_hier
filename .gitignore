@@ -1,0 +1,33 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+
+# VS Code settings
+.vscode/
+
+# Compiled models, checkpoints, and artifacts
+**/checkpoint-*/
+**/best/
+**/model.safetensors
+**/training_args.bin
+**/optimizer.pt
+**/scheduler.pt
+**/rng_state*.pth
+
+# WANDB runs and logs
+wandb/
+**/wandb_run_id.txt
+**/wandb-summary.json
+**/wandb-metadata.json
+**/debug*.log
+**/run-*.wandb
+
+# Data artifacts
+data/processed/
+data/raw/
+
+# MacOS
+.DS_Store
+
+# Ignore zipped artifacts if any
+*.zip

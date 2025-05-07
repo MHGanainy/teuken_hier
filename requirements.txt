@@ -1,0 +1,19 @@
+# --- Core training stack ---
+torch==2.2.1             # CUDA 12 wheels (bf16 & Flash-Attn kernels)
+transformers==4.46.0
+datasets==3.0.0
+accelerate==0.34.0
+trl==0.17.0                # SFTTrainer, PPO, etc.
+peft==0.11.1
+bitsandbytes==0.45.2
+evaluate==0.4.3 
+rouge-score==0.1.2
+bert-score==0.3.13
+scikit-learn==1.5.0       # needed by evaluate for some metrics
+sentencepiece==0.2.0
+tqdm>=4.66.4
+pandas==2.2.3
+deepspeed==0.15.4
+python-dotenv
+wandb
+# pip install flash-attn --no-build-isolation
