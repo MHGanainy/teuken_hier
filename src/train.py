@@ -1,30 +1,39 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# CUDA_VISIBLE_DEVICES=0 accelerate launch --num_processes 1 --mixed_precision bf16  src/train.py
+# Example launch on 4 GPUs:
+# CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch --multi_gpu --num_processes 4 --mixed_precision bf16 src/train.py
 from __future__ import annotations
 
 import os
+import random
 from pathlib import Path
 
+import numpy as np
 import torch
 from dotenv import load_dotenv
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig, SFTTrainer
+from datasets import load_dataset
 
 # ─────────────────────────── utils  ────────────────────────────
-# All reusable helpers live in utils.py
 from utils import (
     GradNormWandBCallback,
     resolve_ckpt,
     init_or_resume_wandb,
     push_to_hf_hub,
     build_ppl_compute_metrics,
+    EarlyStopBadRun,
 )
-from datasets import load_dataset
+
+# ───────────────────────── seed ─────────────────────────
+seed = 42
+torch.manual_seed(seed)
+random.seed(seed)
+np.random.seed(seed)
 
 # ───────────────────────── credentials ─────────────────────────
-load_dotenv()                                   # reads .env → os.environ
-HF_TOKEN = os.getenv("HF_API_KEY")              # MUST exist
+load_dotenv()
+HF_TOKEN = os.getenv("HF_API_KEY")
 if HF_TOKEN is None:
     raise RuntimeError("HF_API_KEY not found in environment (.env)")
 
@@ -32,10 +41,9 @@ HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft"
 
 # ────────────────────────── paths & constants ──────────────────────────
 MODEL_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
-# MODEL_NAME = "utter-project/EuroLLM-1.7B-Instruct"
 DATA_DIR   = Path("/home/heshmo/workspace/teuken_hier/data/processed")
 OUT_DIR    = Path("teuken-hier-sft")
-FULL_DIR   = OUT_DIR / "best"              # final consolidated folder
+FULL_DIR   = OUT_DIR / "best"
 RUN_ID_FILE = OUT_DIR / "wandb_run_id.txt"
 
 # ─────────────────── checkpoint selection ─────────────────────────────
@@ -43,30 +51,32 @@ CKPT_PATH   = None                          # None / "LAST" / "/path/to/ckpt"
 resume_ckpt = resolve_ckpt(CKPT_PATH, OUT_DIR)
 
 # ───────────────────────── dataset ────────────────────────────────────
-train_ds = (
-    load_dataset("json", data_files=str(DATA_DIR / "train.jsonl"), split="train")
-    .select([0])                       # tiny demo, single record
-)
-val_ds = train_ds
+train_ds = load_dataset("json", data_files=str(DATA_DIR / "train.jsonl"), split="train")
+val_ds   = load_dataset("json", data_files=str(DATA_DIR / "test.jsonl"),  split="train")
 
 # ───────────────────── tokenizer & base model ─────────────────────────
 tokenizer = AutoTokenizer.from_pretrained(
     MODEL_NAME, use_fast=False, trust_remote_code=True
 )
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME, torch_dtype=torch.bfloat16, trust_remote_code=True
+    MODEL_NAME,
+    torch_dtype=torch.bfloat16,
+    trust_remote_code=True,
+    attn_implementation="flash_attention_2",
 )
 model.gradient_checkpointing_enable()
+model.config.use_cache = False
+model.config.dropout   = 0.1
+
+compute_metrics = build_ppl_compute_metrics()
 
 # ───────────────────────── trainer config ─────────────────────────────
-
-compute_metrics = build_ppl_compute_metrics() 
-
 trainer_cfg = SFTConfig(
+    seed=seed,
     output_dir=str(OUT_DIR),
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=1,
-    num_train_epochs=7,
+    gradient_accumulation_steps=4096,
+    num_train_epochs=4,
     learning_rate=2e-5,
     lr_scheduler_type="constant",
     warmup_steps=0,
@@ -75,11 +85,14 @@ trainer_cfg = SFTConfig(
     weight_decay=0.01,
     max_length=4096,
     packing=False,
-    max_grad_norm = 1.0,
     logging_steps=1,
     completion_only_loss=True,
-    eval_strategy="epoch",
-    save_strategy="epoch",
+    eval_strategy="steps",
+    eval_steps=2,
+    save_strategy="steps",
+    save_total_limit=5,
+    load_best_model_at_end=True,
+    save_steps=2,
     per_device_eval_batch_size=1,
     dataset_text_field="prompt",
     bf16=True,
@@ -87,19 +100,25 @@ trainer_cfg = SFTConfig(
     eval_accumulation_steps=1,
     run_name="teuken-hier-sft",
     report_to=["wandb"],
+    remove_unused_columns=False,
+    max_grad_norm=1.0,
 )
 
-model.config.dropout = 0.1 
-
-# Missing Early Stopping
 trainer = SFTTrainer(
     model=model,
     args=trainer_cfg,
     train_dataset=train_ds,
     eval_dataset=val_ds,
     processing_class=tokenizer,
-    compute_metrics=compute_metrics,
-    callbacks=[GradNormWandBCallback()],
+    # compute_metrics=compute_metrics,  # Uncomment if you want PPL evaluation
+    callbacks=[
+        GradNormWandBCallback(),
+        EarlyStopBadRun(
+            window_steps=750,
+            grad_norm_threshold=4.5,
+            loss_threshold=0.90,
+        ),
+    ],
 )
 
 # ─────────────────────── main routine ─────────────────────────────────
