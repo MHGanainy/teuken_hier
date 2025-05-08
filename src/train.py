@@ -33,7 +33,7 @@ np.random.seed(seed)
 
 # ───────────────────────── credentials ─────────────────────────
 load_dotenv()
-HF_TOKEN = "REMOVED" #os.getenv("HF_API_KEY")
+HF_TOKEN = os.getenv("HF_API_KEY")
 if HF_TOKEN is None:
     raise RuntimeError("HF_API_KEY not found in environment (.env)")
 
