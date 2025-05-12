@@ -22,7 +22,6 @@ from utils import (
     init_or_resume_wandb,
     push_to_hf_hub,
     build_ppl_compute_metrics,
-    EarlyStopBadRun,
 )
 
 # ───────────────────────── seed ─────────────────────────
@@ -37,12 +36,12 @@ HF_TOKEN = os.getenv("HF_API_KEY") #"REMOVED" #os.getenv("HF_API_KEY")
 if HF_TOKEN is None:
     raise RuntimeError("HF_API_KEY not found in environment (.env)")
 
-HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft"
+HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft-press-summary"
 
 # ────────────────────────── paths & constants ──────────────────────────
 MODEL_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
 DATA_DIR   = Path("/teuken_hier/data/processed")
-OUT_DIR    = Path("teuken-hier-sft")
+OUT_DIR    = Path("teuken-hier-sft-press-summary")
 FULL_DIR   = OUT_DIR / "best"
 RUN_ID_FILE = OUT_DIR / "wandb_run_id.txt"
 # ─────────────────── checkpoint selection ─────────────────────────────
@@ -65,7 +64,7 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 # model.gradient_checkpointing_enable()
 model.config.use_cache = False
-model.config.dropout   = 0.1
+model.config.dropout   = 0.2
 
 compute_metrics = build_ppl_compute_metrics()
 
@@ -75,8 +74,8 @@ trainer_cfg = SFTConfig(
     output_dir=str(OUT_DIR),
     per_device_train_batch_size=2,
     gradient_accumulation_steps=128,
-    num_train_epochs=4,
-    learning_rate=2e-5,
+    num_train_epochs=10,
+    learning_rate=1e-5,
     lr_scheduler_type="constant",
     warmup_steps=0,
     adam_beta1=0.9,
@@ -86,9 +85,9 @@ trainer_cfg = SFTConfig(
     packing=False,
     logging_steps=2,
     completion_only_loss=True,
-    eval_strategy="steps",
+    eval_strategy="epoch",
     eval_steps=25,
-    save_strategy="steps",
+    save_strategy="epoch",
     save_total_limit=2,
     save_steps=25,
     per_device_eval_batch_size=1,
@@ -99,7 +98,7 @@ trainer_cfg = SFTConfig(
     metric_for_best_model  = "eval_loss",
     greater_is_better      = False,  
     eval_accumulation_steps=1,
-    run_name="teuken-hier-sft",
+    run_name="teuken-hier-sft-press-summary",
     report_to=["wandb"],
     remove_unused_columns=False,
     max_grad_norm=1.0,
@@ -115,7 +114,7 @@ trainer = SFTTrainer(
     callbacks=[
         GradNormWandBCallback(),
         EarlyStoppingCallback(
-        early_stopping_patience   = 4,   
+        early_stopping_patience   = 2,   
         early_stopping_threshold  = 0.0
     ),
     ],
@@ -130,7 +129,7 @@ if __name__ == "__main__":
         run_id_file=RUN_ID_FILE,
         trainer_cfg=trainer_cfg,
         resume_ckpt=resume_ckpt,
-        notes="Teuken-7B SFT — single-GPU run",
+        notes="Teuken-7B SFT — single-GPU run with press summary",  
         project=os.getenv("WANDB_PROJECT", "teuken-hier"),
     )
 
