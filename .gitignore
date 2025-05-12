@@ -24,8 +24,10 @@ wandb/
 **/debug*.log
 **/run-*.wandb
 
+
 # Data artifacts
 data/processed/
+data/processed_hier/
 data/raw/
 
 # MacOS
