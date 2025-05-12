@@ -40,6 +40,7 @@ HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft-press-summary"
 
 # ────────────────────────── paths & constants ──────────────────────────
 MODEL_NAME = "MHGanainy/teuken-hier-summ-sft"
+TOKENIZER_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
 DATA_DIR   = Path("/teuken_hier/data/processed")
 OUT_DIR    = Path("teuken-hier-sft-press-summary")
 FULL_DIR   = OUT_DIR / "best"
@@ -54,7 +55,7 @@ val_ds   = load_dataset("json", data_files=str(DATA_DIR / "test.jsonl"),  split=
 
 # ───────────────────── tokenizer & base model ─────────────────────────
 tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME, use_fast=False, trust_remote_code=True
+    TOKENIZER_NAME, use_fast=False, trust_remote_code=True
 )
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
