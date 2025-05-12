@@ -35,3 +35,4 @@ data/raw/
 
 # Ignore zipped artifacts if any
 *.zip
+data/processed_hier/*.jsonl
