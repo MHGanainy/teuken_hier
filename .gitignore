@@ -36,3 +36,5 @@ data/raw/
 # Ignore zipped artifacts if any
 *.zip
 data/processed_hier/*.jsonl
+replacements.txt
+src/push_checkpoint.py
