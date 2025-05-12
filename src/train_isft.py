@@ -39,7 +39,7 @@ if HF_TOKEN is None:
 HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft-press-summary"
 
 # ────────────────────────── paths & constants ──────────────────────────
-MODEL_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
+MODEL_NAME = "MHGanainy/teuken-hier-summ-sft"
 DATA_DIR   = Path("/teuken_hier/data/processed")
 OUT_DIR    = Path("teuken-hier-sft-press-summary")
 FULL_DIR   = OUT_DIR / "best"
