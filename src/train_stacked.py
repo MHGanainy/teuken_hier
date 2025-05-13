@@ -13,7 +13,7 @@ import torch
 from dotenv import load_dotenv
 from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
 from trl import SFTConfig, SFTTrainer
-from datasets import load_dataset
+from datasets import load_dataset, interleave_datasets
 
 # ─────────────────────────── utils  ────────────────────────────
 from utils import (
@@ -36,13 +36,13 @@ HF_TOKEN = os.getenv("HF_API_KEY") #"REMOVED" #os.getenv("HF_API_KEY")
 if HF_TOKEN is None:
     raise RuntimeError("HF_API_KEY not found in environment (.env)")
 
-HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft-press-summary"
+HUB_REPO_ID = "MHGanainy/teuken-hier-summ-sft-press-stacked"
 
 # ────────────────────────── paths & constants ──────────────────────────
-MODEL_NAME = "MHGanainy/teuken-hier-summ-sft"
+MODEL_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
 TOKENIZER_NAME = "openGPT-X/Teuken-7B-instruct-research-v0.4"
 DATA_DIR   = Path("/teuken_hier/data/processed")
-OUT_DIR    = Path("teuken-hier-sft-press-summary")
+OUT_DIR    = Path("teuken-hier-sft-press-summary-stacked")
 FULL_DIR   = OUT_DIR / "best"
 RUN_ID_FILE = OUT_DIR / "wandb_run_id.txt"
 # ─────────────────── checkpoint selection ─────────────────────────────
@@ -50,8 +50,31 @@ CKPT_PATH   = None                          # None / "LAST" / "/path/to/ckpt"
 resume_ckpt = resolve_ckpt(CKPT_PATH, OUT_DIR)
 
 # ───────────────────────── dataset ────────────────────────────────────
-train_ds = load_dataset("json", data_files=str(DATA_DIR / "train.jsonl"), split="train")
-val_ds   = load_dataset("json", data_files=str(DATA_DIR / "test.jsonl"),  split="train")
+abs_train = load_dataset("json", data_files=str(DATA_DIR / "abs_train.jsonl"), split="train")
+abs_val   = load_dataset("json", data_files=str(DATA_DIR / "abs_test.jsonl"),  split="train")
+
+hier_train = load_dataset(
+   "json", data_files=str(DATA_DIR / "hier_train.jsonl"), split="train"
+)
+hier_val = load_dataset(
+   "json", data_files=str(DATA_DIR / "hier_test.jsonl"), split="train"
+)
+
+TEMPERATURE = 0.5
+
+sizes   = np.array([len(hier_train), len(abs_train)], dtype=float)
+probs   = (sizes / sizes.sum()) ** (1 / TEMPERATURE)
+probs   = probs / probs.sum()
+print(f"Sampling probabilities  hier:{probs[0]:.2%}  abs:{probs[1]:.2%}")
+
+train_ds = interleave_datasets(
+    [hier_train, abs_train],
+    probabilities=list(probs),
+    seed=seed,
+    stopping_strategy="all_exhausted",
+)
+
+val_ds = abs_val
 
 # ───────────────────── tokenizer & base model ─────────────────────────
 tokenizer = AutoTokenizer.from_pretrained(
@@ -74,9 +97,9 @@ trainer_cfg = SFTConfig(
     seed=seed,
     output_dir=str(OUT_DIR),
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=256,
+    gradient_accumulation_steps=512,
     num_train_epochs=10,
-    learning_rate=1e-5,
+    learning_rate=2e-5,
     lr_scheduler_type="constant",
     warmup_steps=0,
     adam_beta1=0.9,
@@ -84,13 +107,13 @@ trainer_cfg = SFTConfig(
     weight_decay=0.01,
     max_length=4096,
     packing=False,
-    logging_steps=2,
+    logging_steps=1,
     completion_only_loss=True,
-    eval_strategy="epoch",
-    eval_steps=1,
-    save_strategy="epoch",
+    eval_strategy="steps",
+    eval_steps=20,
+    save_strategy="steps",
     save_total_limit=2,
-    save_steps=1,
+    save_steps=20,
     per_device_eval_batch_size=1,
     dataset_text_field="prompt",
     bf16=True,
@@ -99,7 +122,7 @@ trainer_cfg = SFTConfig(
     metric_for_best_model  = "eval_loss",
     greater_is_better      = False,  
     eval_accumulation_steps=1,
-    run_name="teuken-hier-sft-press-summary",
+    run_name="teuken-hier-sft-press-summary-stacked",
     report_to=["wandb"],
     remove_unused_columns=False,
     max_grad_norm=1.0,
@@ -130,7 +153,7 @@ if __name__ == "__main__":
         run_id_file=RUN_ID_FILE,
         trainer_cfg=trainer_cfg,
         resume_ckpt=resume_ckpt,
-        notes="Teuken-7B SFT — single-GPU run with press summary",  
+        notes="Teuken-7B SFT — single-GPU run with press summary stacked",  
         project=os.getenv("WANDB_PROJECT", "teuken-hier"),
     )
 
